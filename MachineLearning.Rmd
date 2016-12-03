@@ -1,0 +1,84 @@
+---
+title: "MachineLearningProject"
+author: "Hugo G Schmidt"
+date: "11/27/2016"
+output: html_document
+---
+
+```{r setup, include=FALSE}
+knitr::opts_chunk$set(echo = TRUE)
+library(caret)
+library(AppliedPredictiveModeling)
+library(ggplot2)
+library(e1071)
+library(rpart)
+```
+
+## Executive Summary
+
+
+##  Loading Data & Data Pre-processing
+
+```{r, echo = TRUE}
+train <- read.csv("https://d396qusza40orc.cloudfront.net/predmachlearn/pml-training.csv")
+test <- read.csv("https://d396qusza40orc.cloudfront.net/predmachlearn/pml-testing.csv")
+```
+A quick eyeball of the data shows a discreditable number of NAs in columns, and these are all of the same length - 19216 - which means they almost completely fill up their respective columns.  These will therefore be dropped for the upcoming analysis.  We also appear to have a number of empty variables.  So we will first set the "" values to NA, and then drop the columns that contain NAs.
+
+```{r, echo= TRUE}
+  train2 <- train
+  train2[train2 ==""] <- NA
+  usecols <- colSums(is.na(train2)) ==0
+  trimTrain <- train2[,usecols]
+```
+
+#Finally, we drop the first 7 variables, as they are not measurements
+
+```{r, echo = TRUE}
+  trimTrain <- trimTrain[,8:dim(trimTrain)[2]]
+```
+
+Creating 3 folds for k-fold cross validation
+```{r, echo = TRUE}
+  res <- data.frame(rpart = c(0,0,0), nBayes = c(0,0,0), svm = c(0,0,0))
+  folds <- createFolds(trimTrain$classe, k = 3, list = TRUE, returnTrain = TRUE)
+
+for (i in 1:length(folds))
+  {
+   subtrain <- trimTrain[-folds[[i]],]
+   subtest <- trimTrain[folds[[i]],]
+  
+   svmmod <- svm(classe ~., data = subtrain, preProcess = "pca")
+   treemod <- train(classe ~., data = subtrain, preProcess ="pca", method = "rpart")
+   Bayesmod <- naiveBayes(classe~., data = subtrain, preProcess = "pca")
+    
+   treepred <- predict(treemod, newdata = subtest)
+   svmpred <- predict(svmmod, newdata = subtest)
+   bayespred <- predict(Bayesmod, newdata = subtest)
+   
+   res$rpart[i] <- confusionMatrix(treepred, subtest$classe)[[3]][1]
+   res$svm[i] <- confusionMatrix(svmpred, subtest$classe)[[3]][1]
+   res$nBayes[i] <- confusionMatrix(bayespred, subtest$classe)[[3]][1]
+  }
+```
+
+We now determind which method/model has the greatest accuracy:
+
+```{r, echo = TRUE}
+  sapply(res, mean)
+```
+
+As SVM has the greatest accuracy, we use this method to build a predictive model and apply it to the test data.
+
+```{r, echo =TRUE}
+  fullsvm <- svm(classe ~., data = trimTrain, preProcess = "pca")
+  
+  trimTest <- test[,usecols]
+  trimTest <- trimTest[,8:dim(trimTest)[2]]
+  
+  OOSpreds <- predict(fullsvm, newdata =trimTest)
+```
+
+  In point of fact, it is not possible to determine the Out Of Sample error - because the test data does _not_ contain the 'classe' variable, indicating the performane of the action.  We therefore cannot compare our predicted values with actually observed and measured values.  
+  
+  
